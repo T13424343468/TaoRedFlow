@@ -1,1 +1,1 @@
-ban_ci: 1
+round: 1

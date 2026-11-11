@@ -558,6 +558,7 @@ def build_scene():
                 tris.extend(rot_box(x, z, yaw, -0.15+c0*0.10, 0.26, 1.85-r0*0.22, 0.08, 0.14, 0.18, DARK, 0.01))  # 垂发
         tris.extend(rot_box(x, z, yaw, 0, 0.32, 2.0, 0.14, 0.14, 0.45, DARK, 0.01))    # 主炮
         tris.extend(rot_box(x, z, yaw, 0, 0.55, 1.75, 0.06, 0.30, 0.06, DARK, 0.01))   # 桅杆
+        tris.extend(rot_box(x, z, yaw, 0, 0.93, 1.75, 0.015, 0.16, 0.11, (0xB8,0x3A,0x2E), 0.005))  # 桅顶信号旗
         # 直升机起降坪：尾部甲板深色圆面 + 圆环标线
         tris.extend(rot_box(x, z, yaw, 0, 0.21, -2.1, 1.05, 0.015, 1.3, (0x1E,0x2C,0x3E), 0.005))
         tris.extend(rot_box(x, z, yaw, 0, 0.215, -2.1, 0.72, 0.015, 0.72, (0x2E,0x5E,0x8C), 0.005))
@@ -647,8 +648,21 @@ def build_scene():
     # 交通壕：从营部通向前沿
     trench_line(38.6, 13.8, 41.3, 11.8)
     trench_line(38.4, 14.4, 41.2, 5.0)
-    # 海军：驱逐舰靠泊港湾（与已有护卫舰并靠）
+    # 海军：港湾驻泊编队——三舰靠帮一列（主舰居中，两舷护舷垫贴靠）
     ddg(4.6, 14.4, math.pi/2)
+    ddg(4.6, 13.0, math.pi/2)
+    ddg(4.6, 11.55, math.pi/2)
+    # 靠帮缝隙护舷垫：两道缝各三块黑垫
+    for gz_ in (13.68, 13.72, 13.64):
+        tris.extend(rot_box(4.6, gz_, 0.0, 0.0, 0.06, gz_, 0.5, 0.10, 0.18, (0x18,0x18,0x18), 0.01))
+    for gz_ in (12.24, 12.28, 12.20):
+        tris.extend(rot_box(4.6, gz_, 0.0, 0.0, 0.06, gz_, 0.5, 0.10, 0.18, (0x18,0x18,0x18), 0.01))
+    # 锚泊浮标：舰列外侧两只橙红浮筒（水线小圆锥+暗色底环）
+    for (bx_, bz_) in [(2.9, 10.2), (3.1, 16.6)]:
+        tris += cone(bx_, 0.02, bz_, 0.22, 0.42, (0xC8,0x5A,0x28), segs=6)
+        tris += cone(bx_, 0.0, bz_, 0.30, 0.10, (0x2A,0x2A,0x2A), segs=6)
+    # 码头哨兵：主舰正对岸缘立岗
+    soldier(7.0, 14.4, BLUE, 'stand', -math.pi/2)
     # 轻型高机动车队：乘车机动、下车战斗（营属侦察/突击分队沿营区南侧道路纵队）
     gmv(24.0, 18.6, 0.0, BLUE); gmv(28.0, 18.6, 0.0, BLUE); gmv(32.0, 18.6, 0.0, BLUE)
     fireteam(24.9, 17.4, BLUE, 0.0); fireteam(28.9, 17.4, BLUE, 0.0); fireteam(32.9, 17.4, BLUE, 0.0)
@@ -1216,3 +1230,5 @@ render(scene, (30, 2.0, 18.6), (29.8, 0.5, 5.0), math.radians(50), f'{ROOT}/prox
 render(scene, (41, 8.5, 22), (57, 0.3, 15), math.radians(55), f'{ROOT}/proxy_view_strait.png', 'strait')
 # 视角五：掠海侦察线（阶段一第二班——三机波次贴海低空+水面机影+下洗波纹）
 render(scene, (41.5, 7.0, 30.5), (49.0, 0.5, 24.0), math.radians(50), f'{ROOT}/proxy_view_helo.png', 'helo')
+# 视角六：港湾驻泊线（编队驻泊细节——三舰靠帮成列+护舷垫+锚浮标+码头哨兵）
+render(scene, (0.2, 5.5, 22.5), (4.8, 0.2, 13.8), math.radians(52), f'{ROOT}/proxy_view_anchorage.png', 'anchorage')

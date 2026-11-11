@@ -21,12 +21,12 @@ jobs:
         run: python proxy_render.py
       - name: 断言产物齐全
         run: |
-          for f in proxy_view_wide proxy_view_close proxy_view_prc proxy_view_strait proxy_view_helo; do
+          for f in proxy_view_wide proxy_view_close proxy_view_prc proxy_view_strait proxy_view_helo proxy_view_anchorage; do
             [ -s "$f.png" ] || { echo "MISSING/EMPTY: $f.png"; exit 1; }
           done
-          ls -la *.png
+          ls -la proxy_view_*.png
       - uses: actions/upload-artifact@v4
         with:
           name: render-output
-          path: out/
+          path: proxy_view_*.png
           retention-days: 7

@@ -411,17 +411,17 @@ def build_scene():
 
     def field_wear(x, z, yaw, hw, hh, hd, col):
         # 做旧三件：下缘泥污带 + 棱线磨损露底 + 锈迹流挂，近景单车三处可辨
-        mud  = (0x4E,0x42,0x33)
-        bare = tuple(min(255, max(0, int(col[i]*1.4))) for i in range(3))
-        rust = (0x6B,0x4A,0x2E)
+        # WP-B 加深对比：泥带压暗收窄、露底提亮，锈流挂加浓并补第三道车头流挂
+        mud  = (0x38,0x2E,0x22)   # 泥带更暗更脏，与露底拉开明度差
+        bare = tuple(min(255, max(0, int(col[i]*1.62))) for i in range(3))
+        rust = (0x7C,0x4A,0x28)
         for sx in (-1, 1):   # 两侧下沿泥污带
-            tris.extend(rot_box(x, z, yaw, sx*hw, 0.13, 0, 0.045, 0.11, hd*1.7, mud, 0.02))
+            tris.extend(rot_box(x, z, yaw, sx*hw, 0.13, 0, 0.045, 0.10, hd*1.7, mud, 0.02))
         tris.extend(rot_box(x, z, yaw, 0, 0.11, -hd, hw*1.5, 0.13, 0.06, mud, 0.02))  # 车尾横泥带
         tris.extend(rot_box(x, z, yaw, hw*0.6, hh+0.005, hd*0.45, 0.14, 0.025, 0.24, bare, 0.005))  # 上棱磨损露底
         tris.extend(rot_box(x, z, yaw, -hw*0.5, hh+0.005, -hd*0.35, 0.12, 0.025, 0.20, bare, 0.005))
-        rust = tuple(min(255, int(c*1.15)) for c in rust)
-        for (lx, lz) in ((hw*0.92, -hd*0.45), (-hw*0.86, hd*0.28)):  # 侧下锈迹流挂两道
-            tris.extend(rot_box(x, z, yaw, lx, hh*0.5, lz, 0.038, hh*0.85, 0.07, rust, 0.004))
+        for (lx, lz) in ((hw*0.92, -hd*0.45), (-hw*0.86, hd*0.28), (hw*0.55, hd*0.72)):  # 侧下锈迹流挂三道（车头补一道）
+            tris.extend(rot_box(x, z, yaw, lx, hh*0.42, lz, 0.042, hh*0.92, 0.075, rust, 0.004))
 
     def mbt(x, z, yaw):
         # 99A：履带 + 车体 + 楔形炮塔 + 附加装甲 + 遥感武器站 + 滑膛炮
@@ -615,6 +615,20 @@ def build_scene():
                 tris.extend(rot_box(x, z, yaw, sx0, 0.30, lz0, 0.015, 0.012, 0.55, DARK, 0.005))
         # 舰艏折角：主炮前小V形甲板
         tris.extend(rot_box(x, z, yaw, 0, 0.16, 2.35, 0.7, 0.06, 0.4, hull_c, 0.03))
+        # WP-B 吃水线锈带：两舷水线叠加锈色带，严格约束在 y<0.15 区间（带顶0.10）
+        # 与甲板使用痕（系缆磨痕两道 + 直升机甲板轮胎擦痕），不改舰体轮廓
+        WL_RUST  = (0x5C,0x38,0x24)   # 水线锈红：海生物附着+锈蚀混合
+        WL_DARK  = (0x2E,0x1E,0x16)   # 水线以下暗色污底
+        for sx in (-1, 1):            # 两舷锈带上段（水面附近）
+            tris.extend(rot_box(x, z, yaw, sx*0.66, 0.075, 0, 0.035, 0.05, 4.2, WL_RUST, 0.008))
+        for sx in (-1, 1):            # 两舷污底下段（贴水更暗）
+            tris.extend(rot_box(x, z, yaw, sx*0.665, 0.025, 0, 0.04, 0.05, 4.22, WL_DARK, 0.008))
+        for sz in (-2.09, 2.09):      # 艏艉端面锈带封边
+            tris.extend(rot_box(x, z, yaw, 0, 0.075, sz, 1.30, 0.05, 0.035, WL_RUST, 0.008))
+            tris.extend(rot_box(x, z, yaw, 0, 0.025, sz, 1.32, 0.05, 0.04, WL_DARK, 0.008))
+        tris.extend(rot_box(x, z, yaw, 0.45, 0.208, 0.6, 0.55, 0.012, 0.05, (0x1C,0x26,0x30), 0.005))  # 甲板系缆磨痕
+        tris.extend(rot_box(x, z, yaw, -0.35, 0.208, -0.4, 0.45, 0.012, 0.04, (0x1C,0x26,0x30), 0.005)) # 甲板油渍痕
+        tris.extend(rot_box(x, z, yaw, 0.1, 0.221, -2.0, 0.9, 0.012, 0.10, (0x14,0x1A,0x22), 0.005))   # 起降坪轮胎擦痕
 
     def gmv(x, z, yaw, col):
         # 轻型高机动车：尖头引擎盖 + 低驾驶舱 + 防滚架 + 帆布货斗 + 备胎，车斗载2名乘员

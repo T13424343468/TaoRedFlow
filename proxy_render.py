@@ -1084,10 +1084,31 @@ def render(scene, eye, target, fov, out_path, label):
                                 ie_w = islet_e(wx, wz)
                                 if 1.0 < ie_w < 2.2:
                                     edge = min(edge, (ie_w - 1.0) * 1.1)
-                                flow = wz*2.4 + wx*0.45
-                                f = 0.94 + 0.14*math.sin(flow) \
-                                        + 0.07*math.sin(flow*2.6 + 1.7) \
-                                        + 0.05*math.sin(wx*3.1 - wz*1.8)
+                                # 波浪折射：远海波峰沿主风向，近岸逐渐弯到与岸线平行
+                                refr = max(0.0, min(0.8, 1.0 - edge/7.0))
+                                ph_main = wz*2.4 + wx*0.45
+                                ph_shore = edge*3.1           # 贴岸等距相位，波峰线趋于平行岸线
+                                flow = ph_main*(1.0-refr*0.85) + ph_shore*(refr*0.85)
+                                # 波群：慢包络让浪一伙一伙地来，不是均匀栅格
+                                swell = 0.78 + 0.30*math.sin(wz*0.33 + wx*0.11 + 1.9) \
+                                             + 0.14*math.sin(wz*0.71 - wx*0.23)
+                                f = 0.94 + swell*(0.13*math.sin(flow)
+                                        + 0.075*math.sin(flow*2.6 + 1.7)
+                                        + 0.05*math.sin(wx*3.1 - wz*1.8 + refr*1.2))
+                                # 浅水涌浪变陡：近岸波高略增
+                                f += refr*0.05*math.sin(flow*1.3 + 0.6)
+                                # 波面法线：由波高场解析梯度求浪面朝向——迎光面亮、背光面暗，浪有了立体两面
+                                dfx = 0.45*(1.0-refr*0.85)
+                                dfz = 2.4*(1.0-refr*0.85)
+                                cf_ = math.cos(flow)
+                                dsx = 0.033*math.sin(wx*0.33+wz*0.11+1.9) - 0.032*math.cos(wx*0.71-wz*0.23)
+                                dsz = 0.099*math.sin(wx*0.33+wz*0.11+1.9) + 0.099*math.cos(wx*0.71-wz*0.23)
+                                dhx = (swell*dfx)*cf_ + dsx*math.sin(flow)
+                                dhz = (swell*dfz)*cf_ + dsz*math.sin(flow)
+                                face = 1.0 + 0.19*(dhx*SUN[0] + dhz*SUN[2])
+                                face = max(0.80, min(1.20, face))
+                                f *= face
+                                hC = swell * cf_
                                 if ((int(wx*13.7) ^ int(wz*11.3)) & 63) == 0:
                                     f *= 1.26
                                 # 深浅分层：浅滩提亮、中段过渡、深海压暗偏墨蓝，界线加噪声打散
@@ -1097,6 +1118,17 @@ def render(scene, eye, target, fov, out_path, label):
                                 c = tuple(min(255, int(((k*0.78 + 0.22*95)*(0.78+0.26*shallow)*(1.0-0.25*deep_m)
                                           + (0x16,0x33,0x52)[i]*0.25*deep_m)*f*lit))
                                           for i, k in enumerate(WATER))
+                                # 深海白帽：浪峰高过阈值时浪尖带碎沫，随波群出没、贴波峰线断续分布
+                                if deep_m > 0.25 and hC > 0.60:
+                                    wc = (hC - 0.60) * 2.6 * min(1.0, (deep_m - 0.25) / 0.4)
+                                    wc = min(0.28, wc * (0.50 + 0.50*(((int(wx*7.7) ^ int(wz*6.1)) & 15)/15.0)))
+                                    c = tuple(int(c[i]*(1-wc) + (240, 240, 236)[i]*wc) for i in range(3))
+                                # 风吹条纹：贴主风向拉长的微亮暗条，远海一片片「猫爪」光斑
+                                wnd = math.sin(wx*0.28 + wz*1.35 + math.sin(wx*0.11+wz*0.07)*2.0)
+                                wnd_m = max(0.0, math.sin(wx*0.045 + wz*0.021 + 2.4)) ** 3
+                                if wnd_m > 0:
+                                    wamp = 0.045*wnd*wnd_m
+                                    c = tuple(min(255, max(0, int(c[i]*(1.0 + wamp)))) for i in range(3))
                                 if sp is not None and edge < 1.0:
                                     t = 1.0 - edge   # 1=贴岸
                                     u = min(sw-1, int((wx % 3.5)/3.5*sw))
@@ -1110,6 +1142,14 @@ def render(scene, eye, target, fov, out_path, label):
                                     rip = math.sin(wx*2.2 + wz*1.3)*math.sin(wx*0.9 - wz*2.1)
                                     c = tuple(min(255, max(0, int(c[i]*(1.0 + 0.06*rip)
                                               + (188,172,142)[i]*st_*0.30))) for i in range(3))
+                                if edge < 3.2:
+                                    # 破波带：白水沿岸拉出条状碎沫，越贴岸越白，随波群起伏
+                                    bw = max(0.0, 1.0 - edge/3.2)
+                                    streak = math.sin(edge*7.3 + wx*0.55 + wz*0.28)
+                                    brk = bw*bw * (0.30 + 0.22*streak) \
+                                          * (0.75 + 0.35*math.sin(edge*2.2 - wx*0.19 + flow*0.1))
+                                    brk = min(0.55, max(0.0, brk))
+                                    c = tuple(int(c[i]*(1-brk) + (246, 244, 238)[i]*brk) for i in range(3))
                                 if edge < 0.45:
                                     # 白浪线：贴岸断续泡沫，随波纹起伏
                                     foam_n = ((int(wx*9.1) ^ int(wz*7.7)) & 7)
@@ -1125,12 +1165,12 @@ def render(scene, eye, target, fov, out_path, label):
                                                         * (0.55 + 0.45*math.sin(wz*5.7 + wx*1.3))
                                     ft2 = min(0.30, max(0.0, ft2))
                                     c = tuple(int(c[i]*(1-ft2) + 240*ft2) for i in range(3))
-                                # 夕阳碎金：朝太阳方位的水面拉出高光反光带，随波纹碎化
+                                # 夕阳碎金：朝太阳方位的水面拉出高光反光带，随波纹碎化；波面朝向决定闪亮强度
                                 vsx_, vsz_ = wx - eye[0], wz - eye[2]
                                 vlw = math.hypot(vsx_, vsz_) or 1.0
                                 gl = max(0.0, (vsx_/vlw)*SUNH[0] + (vsz_/vlw)*SUNH[1]) ** 9
                                 ripple = 0.55 + 0.45*math.sin(wx*3.3 + wz*2.1)
-                                gt_ = min(0.36, gl*ripple*0.55)
+                                gt_ = min(0.42, gl*ripple*0.55*(0.7 + 0.6*max(0.0, dhx*SUN[0] + dhz*SUN[2])))
                                 c = tuple(min(255, int(c[i]*(1-gt_) + (255, 218, 158)[i]*gt_))
                                           for i in range(3))
                             else:

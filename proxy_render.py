@@ -161,11 +161,55 @@ def build_scene():
             x0, z0 = gx, gz
             tk = terr(cx, cz)
             if tk == 'water':
-                # 近海：流动水面 + 阳光碎金
+                # 近海：浪场直接落到着色路径（第2班刀位修正）——
+                # 无实拍图时 gp=None，逐像素分支不执行，水面观感由本格子颜色决定
                 j = rj.uniform(0.90, 1.08)
                 if rj.random() < 0.08:
                     j *= 1.5
-                c = tuple(min(255, int(q*j)) for q in WATER)
+                edge = 1e9
+                if cx < isl_x0(cz): edge = min(edge, isl_x0(cz) - cx)
+                if isl_x1(cz) < cx < main_x(cz):
+                    edge = min(edge, cx - isl_x1(cz), main_x(cz) - cx)
+                if cx <= isl_x1(cx) and cz < isl_z0(cx):
+                    edge = min(edge, isl_z0(cx) - cz)
+                if cx <= isl_x1(cx) and cz > isl_z1(cx):
+                    edge = min(edge, cz - isl_z1(cx))
+                ie_w = islet_e(cx, cz)
+                if 1.0 < ie_w < 2.2:
+                    edge = min(edge, (ie_w - 1.0) * 1.1)
+                # 波浪折射：远海波峰沿主风向，近岸逐渐弯到与岸线平行
+                refr = max(0.0, min(0.8, 1.0 - edge/7.0))
+                flow = (cz*2.4 + cx*0.45)*(1.0-refr*0.85) + edge*3.1*(refr*0.85)
+                # 波群：慢包络让浪一伙一伙地来
+                swell = 0.78 + 0.30*math.sin(cz*0.33 + cx*0.11 + 1.9) \
+                             + 0.14*math.sin(cz*0.71 - cx*0.23)
+                cf_ = math.cos(flow)
+                # 波面法线（解析梯度近似）：迎光面亮、背光面暗，浪有立体两面
+                f = (0.94 + swell*(0.13*math.sin(flow) + 0.075*math.sin(flow*2.6 + 1.7)
+                        + 0.05*math.sin(cx*3.1 - cz*1.8 + refr*1.2))) \
+                    * (1.0 - 0.278*swell*cf_*(1.0-refr*0.85))
+                hC = swell * cf_
+                deep_m = min(1.0, max(0.0, (edge-6.0)/12.0))
+                c = tuple(min(255, int(q*j*f)) for q in WATER)
+                # 深海白帽：浪峰高过阈值时浪尖带碎沫，随波群出没、贴波峰线断续分布
+                if deep_m > 0.25 and hC > 0.60:
+                    wc = (hC - 0.60) * 2.6 * min(1.0, (deep_m - 0.25) / 0.4)
+                    wc = min(0.28, wc * (0.50 + 0.50*(((int(cx*7.7) ^ int(cz*6.1)) & 15)/15.0)))
+                    c = tuple(int(c[i]*(1-wc) + (240, 240, 236)[i]*wc) for i in range(3))
+                # 破波带：白水沿岸拉出条状碎沫，越贴岸越白，随波群起伏
+                if edge < 3.2:
+                    bw = max(0.0, 1.0 - edge/3.2)
+                    streak = math.sin(edge*7.3 + cx*0.55 + cz*0.28)
+                    brk = bw*bw * (0.30 + 0.22*streak)
+                    brk = min(0.55, max(0.0, brk))
+                    c = tuple(int(c[i]*(1-brk) + (246, 244, 238)[i]*brk) for i in range(3))
+                # 夕阳碎金带：朝太阳方位拉高光，随波纹碎化（固定锚点朝向，与视线解耦）
+                vsx_, vsz_ = cx - 20.0, cz - 20.0
+                vlw = math.hypot(vsx_, vsz_) or 1.0
+                gl = max(0.0, (vsx_/vlw)*SUNH[0] + (vsz_/vlw)*SUNH[1]) ** 6
+                ripple = 0.55 + 0.45*math.sin(cx*3.3 + cz*2.1)
+                gt_ = min(0.36, gl*ripple*0.55)
+                c = tuple(min(255, int(c[i]*(1-gt_) + (255, 218, 158)[i]*gt_)) for i in range(3))
                 tris.append(((x0,0.03,z0),(x0+1,0.03,z0),(x0+1,0.03,z0+1), c, 'water'))
                 tris.append(((x0,0.03,z0),(x0+1,0.03,z0+1),(x0,0.03,z0+1), c, 'water'))
                 continue

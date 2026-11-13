@@ -1008,6 +1008,8 @@ def render(scene, eye, target, fov, out_path, label):
           right[0]*fwd[1]-right[1]*fwd[0])
     # 渐变天空（傍晚）：顶部暮蓝紫 → 地平线暖琥珀，落日一侧压光晕
     SKY_TOP, SKY_HZ = (0x5E, 0x66, 0x82), (0xE0, 0xA8, 0x74)
+    # 大气透视远景色：冷灰蓝，比地平线暗沉，远景按深度混入（WP-A 第3班）
+    FOG_COOL = (0x7A, 0x84, 0x9A)
     grad = Image.new('RGB', (1, H))
     gp = grad.load()
     for yy in range(H):
@@ -1084,10 +1086,15 @@ def render(scene, eye, target, fov, out_path, label):
             lit = max(0.36, min(1.06, lit))
             # 大气雾（傍晚加重）：远处向暖琥珀地平线混合（远山雾更重，沉进落日天际线）
             fog = min(0.5, max(0.0, (z-14)/110))
+            # 大气透视三层（WP-A）：近景吃暖霞、中景过渡、远景混冷灰蓝——远山/远海拉开冷暖纵深
+            depth_f = min(1.0, max(0.0, (z-26.0)/74.0))
+            coolf = depth_f*depth_f
+            haze_c = tuple(int(SKY_HZ[i]*(1-coolf) + FOG_COOL[i]*coolf) for i in range(3))
             if kind == 'mtn':
                 fog = min(0.58, fog*1.4)   # 远山沉进落日天际线，但不糊成沙丘
             if kind == 'water':
-                fog *= 0.5                 # 水面少吸暖雾，保住海面蓝调
+                # 水面雾按深度拉开：近海少吸雾保住蓝调，远海吃足冷霞——海面纵深感
+                fog *= (0.32 + 0.68*depth_f)
             (x0, y0, _), (x1, y1, _), (x2, y2, _) = pts
             xs = [x0, x1, x2]; ys = [y0, y1, y2]
             minx, maxx = max(0, int(min(xs))), min(W-1, int(max(xs))+1)
@@ -1266,7 +1273,7 @@ def render(scene, eye, target, fov, out_path, label):
                                 WARM_G = (1.07, 1.00, 0.88)
                                 c = tuple(min(255, int(c[i]*WARM_G[i])) for i in range(3))
                             if fog > 0:
-                                c = tuple(int(k + (SKY_HZ[i]-k)*fog) for i, k in enumerate(c))
+                                c = tuple(int(k + (haze_c[i]-k)*fog) for i, k in enumerate(c))
                             px[xx, yy] = c
                             continue
                         base = tuple(min(255, int(c*lit)) for c in col)
@@ -1299,7 +1306,7 @@ def render(scene, eye, target, fov, out_path, label):
                                 MUD = (0x6E, 0x5C, 0x44)
                                 base = tuple(int(base[i]*(1-mud_t) + MUD[i]*mud_t) for i in range(3))
                         if fog > 0:
-                            base = tuple(int(b + (SKY_HZ[i]-b)*fog) for i, b in enumerate(base))
+                            base = tuple(int(b + (haze_c[i]-b)*fog) for i, b in enumerate(base))
                         px[xx, yy] = base
     img.save(out_path)
     print('saved', out_path, label)

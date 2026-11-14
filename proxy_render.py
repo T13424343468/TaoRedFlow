@@ -121,12 +121,31 @@ def islet_e(x, z):
         e = min(e, v + n)
     return e
 
+# ---- WP-C 格纹歼灭：空间连续值噪声（两倍频叠合，格块间渐变过渡） ----
+def _vnoise(x, z, freq, seed=911):
+    fx, fz = x * freq, z * freq
+    i0, j0 = math.floor(fx), math.floor(fz)
+    tx, tz = fx - i0, fz - j0
+    sx = tx * tx * (3 - 2 * tx); sz = tz * tz * (3 - 2 * tz)
+
+    def h(iv, jv):
+        n = (iv * 374761393 + jv * 668265263 + seed * 1442695041) & 0x7fffffff
+        n = ((n ^ (n >> 13)) * 1274126177) & 0x7fffffff
+        return ((n ^ (n >> 16)) & 0xffff) / 65535.0
+
+    a, b = h(i0, j0), h(i0 + 1, j0)
+    c, d = h(i0, j0 + 1), h(i0 + 1, j0 + 1)
+    return (a + (b - a) * sx) * (1 - sz) + (c + (d - c) * sx) * sz
+
+def _fnoise(x, z):
+    return _vnoise(x, z, 0.21) * 0.62 + _vnoise(x, z, 0.57) * 0.38
+
 def build_scene():
     tris = []
     # 全场景共用随机源：兵人/装备色差与滩头杂物同源，先建后用
     dr = random.Random(880166)
-    # 地面：1m 平铺按世界坐标采样实拍照片（块内 6x6 像素均值，缺失回退棋盘）
-    rj = random.Random(20241104)
+    dbg = {'water': 0, 'shallow': 0, 'photo': 0, 'checker': 0, 'blend': 0}  # 插桩：分支计数
+    # 地面：1m 平铺按世界坐标采样实拍照片（块内 6x6 像素均值，缺失回退噪声化土色）
     gp_img = GROUND_PHOTO.load() if GROUND_PHOTO is not None else None
     gw, gh = GROUND_PHOTO.size if GROUND_PHOTO is not None else (0, 0)
     sp_img = SAND_PHOTO.load() if SAND_PHOTO is not None else None
@@ -155,6 +174,17 @@ def build_scene():
             d = min(x-isl_x0(z), isl_x1(z)-x, z-isl_z0(x), isl_z1(x)-z)
             return 'beach' if d < 2.2 else 'land'
         return 'beach' if (x - main_x(z)) < 2.2 else 'land'
+    # 地面格基色：实拍照片采样或噪声化土色（棋盘格回退已歼灭）
+    def cell_base(x, z, tk):
+        if tk == 'beach' and sp_img is not None:
+            u = min(sw-7, int((x % 9.0)/9.0*sw)); v = min(sh-7, int((z % 9.0)/9.0*sh))
+            return patch_avg(sp_img, u, v, sw, sh)
+        if gp_img is not None:
+            u = min(gw-7, int(x/60*gw)); v = min(gh-7, int(z/40*gh))
+            return patch_avg(gp_img, u, v, gw, gh)
+        t = _fnoise(x, z)
+        return tuple(int(DIRT1[i] + (DIRT2[i]-DIRT1[i])*t) for i in range(3))
+
     for gx in range(60):
         for gz in range(40):
             cx, cz = gx + 0.5, gz + 0.5
@@ -163,9 +193,8 @@ def build_scene():
             if tk == 'water':
                 # 近海：浪场直接落到着色路径（第2班刀位修正）——
                 # 无实拍图时 gp=None，逐像素分支不执行，水面观感由本格子颜色决定
-                j = rj.uniform(0.90, 1.08)
-                if rj.random() < 0.08:
-                    j *= 1.5
+                # WP-C 格纹歼灭：明度抖动改空间连续噪声，格块间不再有随机阶差
+                j = 0.93 + 0.15 * _fnoise(cx, cz)
                 edge = 1e9
                 if cx < isl_x0(cz): edge = min(edge, isl_x0(cz) - cx)
                 if isl_x1(cz) < cx < main_x(cz):
@@ -214,16 +243,22 @@ def build_scene():
                 tris.append(((x0,0.03,z0),(x0+1,0.03,z0+1),(x0,0.03,z0+1), c, 'water'))
                 continue
             if tk == 'beach' and sp_img is not None:
-                # 岸缘沙滩带
-                u = min(sw-7, int((cx % 9.0)/9.0*sw)); v = min(sh-7, int((cz % 9.0)/9.0*sh))
-                c = patch_avg(sp_img, u, v, sw, sh)
-            elif gp_img is not None:
-                u = min(gw-7, int(cx/60*gw)); v = min(gh-7, int(cz/40*gh))
-                c = patch_avg(gp_img, u, v, gw, gh)
-            else:
-                c = DIRT1 if (gx+gz) % 2 == 0 else DIRT2
-            j = rj.uniform(0.96, 1.04)
+                dbg['photo'] += 1
+            elif gp_img is None:
+                dbg['checker'] += 1
+            c = cell_base(cx, cz, tk)
+            # 明度抖动改空间连续噪声，格块间不再有随机阶差
+            j = 0.96 + 0.08 * _fnoise(cx, cz)
             c = tuple(min(255, int(q*j)) for q in c)
+            # 陆-滩边界渐变带：邻格为不同陆侧地形时混入邻色
+            for (ox, oz) in ((1,0),(-1,0),(0,1),(0,-1)):
+                ntk = terr(cx+ox, cz+oz)
+                if ntk not in (tk, 'water'):
+                    f = 0.45
+                    dbg['blend'] += 1
+                    nc = cell_base(cx+ox, cz+oz, ntk)
+                    c = tuple(min(255, int(c[i]*(1.0-f) + nc[i]*f)) for i in range(3))
+                    break
             tris.append(((x0,0,z0),(x0+1,0,z0),(x0+1,0,z0+1), c, 'ground'))
             tris.append(((x0,0,z0),(x0+1,0,z0+1),(x0,0,z0+1), c, 'ground'))
     # 矿床（内迁至岛腹，远离海岸）
@@ -995,6 +1030,9 @@ def build_scene():
                           p[2] - SUN[2]*(p[1]/SUN[1]))
         shadows.append((proj(t[0]), proj(t[1]), proj(t[2]), (52, 48, 42), 'shadow'))
     tris.extend(shadows)
+    if os.environ.get('REDFLOW_DEBUG'):
+        # 插桩口径：分支各在跑为 WP-C 验收前提（photo/checker 陆格、shallow 岸缘渐变、blend 陆滩渐变）
+        print('WP-C branch counts:', dbg, file=__import__('sys').stderr)
     return tris
 
 # ---- 相机与光栅 ----
